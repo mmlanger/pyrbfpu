@@ -9,15 +9,19 @@ x = x.flatten()
 y = y.flatten()
 
 # x, y = np.random.uniform(0, 1, (2, 50*50))
-
 points = np.array([x, y]).T
 
 
 def test_func(x, y):
-    return np.sin(2.5 * x ** 2 + 6 * y ** 2) - np.sin(2 * x ** 2 + 4 * y - 0.5)
+    return [
+        np.sin(2.5 * x ** 2 + 6 * y ** 2) - np.sin(2 * x ** 2 + 4 * y - 0.5),
+        np.sin(2.5 * x ** 2 + 6 * y ** 2),
+        -np.sin(2 * x ** 2 + 4 * y - 0.5),
+    ]
 
 
 vals = test_func(x, y)
+vals = np.array(vals).T
 
 pu = RatRBFPartUnityInterpolation(points, vals, 100)
 pu.domain_decomposition()

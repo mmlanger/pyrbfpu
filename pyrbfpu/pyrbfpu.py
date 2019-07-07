@@ -1,5 +1,3 @@
-#%%
-
 from multiprocessing import Pool
 
 import numpy as np
@@ -173,6 +171,3 @@ class RatRBFPartUnityInterpolation:
             return ValueError("Point not inside partition!")
 
         return f / weight_sum
-
-
-#%%

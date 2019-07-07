@@ -56,8 +56,6 @@ def generate_scale_func_v2(u):
 
 
 def generate_kernel(kernel, eps):
-    # kernel = nb.njit(kernel)
-
     @nb.njit
     def kernel_func(x1, x2):
         return kernel(eps * dist(x1, x2))
