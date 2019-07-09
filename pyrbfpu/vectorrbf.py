@@ -61,7 +61,7 @@ class VectorRationalRBF:
 
     @property
     def computed(self):
-        return self.eval_func is not None
+        return self.alpha is not None
 
     def __call__(self, x):
         return self.eval_func(self.kernel, self.points, self.alpha, self.beta, x)
