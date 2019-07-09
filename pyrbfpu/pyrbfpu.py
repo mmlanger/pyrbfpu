@@ -115,6 +115,9 @@ class RatRBFPartUnityInterpolation:
                 for neighbor_key in neighbors.neighbor_indices(idx_key, level):
                     surr_indices.extend(self.boxpartition.get(neighbor_key, []))
 
+                if not surr_indices:
+                    continue
+
                 surr_points = np.array([self.points[i] for i in surr_indices])
                 surr_dists = util.center_distance_arr(local_center, surr_points)
 
