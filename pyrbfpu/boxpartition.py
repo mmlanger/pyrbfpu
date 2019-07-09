@@ -42,12 +42,12 @@ def parallel_boxpartition(points, delta, n_proc=4):
     delta_batches = [delta for _ in range(n_proc)]
 
     batches = zip(point_batches, label_batches, delta_batches)
-    with Pool(n_proc) as p:
-        partitions = p.starmap(boxpartition, batches)
+    # with Pool(n_proc) as p:
+    #     partitions = p.starmap(boxpartition, batches)
 
     # *** serial version for debugger: ***
-    # from itertools import starmap
-    # partitions = list(starmap(boxpartition, batches))
+    from itertools import starmap
+    partitions = list(starmap(boxpartition, batches))
 
     result_partition = partitions.pop()
 

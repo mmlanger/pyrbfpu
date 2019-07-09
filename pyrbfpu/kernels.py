@@ -9,7 +9,7 @@ def wendland(r):
     base = max(1.0 - r, 0.0)
     if base == 0.0:
         return 0.0
-    
+
     base_sqr = base * base
     return base_sqr * base_sqr * (4.0 * r + 1.0)
 
@@ -55,15 +55,25 @@ def generate_scale_func_v2(u):
     return scale_func
 
 
-def generate_kernel(kernel, eps):
+def generate_scale_func_v3(r, center):
     @nb.njit
-    def kernel_func(x1, x2):
-        return kernel(eps * dist(x1, x2))
+    def scale_func(x):
+        diff = x - center
+        norm_sqr = np.dot(diff, diff)
+        return np.sqrt(r * r - norm_sqr)
 
-    return kernel_func
+    return scale_func
 
 
-def generate_vskernel(kernel, scale_func, return_vsdist=False):
+def generate_kernel(kernel_func, eps):
+    @nb.njit
+    def kernel(x1, x2):
+        return kernel_func(eps * dist(x1, x2))
+
+    return kernel
+
+
+def generate_vskernel(kernel_func, scale_func, return_vsdist=False):
     @nb.njit
     def vsdist(x1, x2):
         n = x1.shape[0]
@@ -80,7 +90,7 @@ def generate_vskernel(kernel, scale_func, return_vsdist=False):
     @nb.njit
     def vskernel(x1, x2):
         r = vsdist(x1, x2)
-        return kernel(r)
+        return kernel_func(r)
 
     if return_vsdist:
         return vsdist, vskernel

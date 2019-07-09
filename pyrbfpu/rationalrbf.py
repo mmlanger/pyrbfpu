@@ -41,7 +41,7 @@ class RationalRBF:
 
         B = kernel_matrix(self.kernel, self.points)
         H, P = lanczos_decomposition(B, f, self.tol)
-        print(H.shape[0])
+        # print(H.shape[0])
         U, s, Vh = np.linalg.svd(H, full_matrices=False)
 
         c = P @ (Vh[0] / s[0])

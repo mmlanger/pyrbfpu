@@ -42,7 +42,7 @@ class RatRBFPartUnityInterpolation:
         min_cardinality=50,
         weight_overlap=0.01,
         init_delta=None,
-        rbf="imq",
+        rbf="gauss",
         tol=1e-14,
     ):
         self.points = points
@@ -57,18 +57,15 @@ class RatRBFPartUnityInterpolation:
         self.box_length = 0.9 * 2 * np.sqrt(self.delta ** 2 / self.point_dim)
 
         if rbf == "imq":
-            self.kernel = kernels.imq
+            self.kernel_func = kernels.imq
         elif rbf == "gauss":
-            self.kernel = kernels.gauss
+            self.kernel_func = kernels.gauss
         elif rbf == "wendland":
-            self.kernel = kernels.wendland
+            self.kernel_func = kernels.wendland
         elif rbf == "wendland_C4":
-            self.kernel = kernels.wendland_C4
+            self.kernel_func = kernels.wendland_C4
         else:
             raise ValueError("Unknown rbf function!")
-
-        self.scale_func = kernels.generate_scale_func_v2(2.0)
-        self.vskernel = kernels.generate_vskernel(self.kernel, self.scale_func)
 
         if len(self.values.shape) > 1:
             self.interpolant_type = VectorRationalRBF
@@ -78,87 +75,112 @@ class RatRBFPartUnityInterpolation:
         self.tol = tol
         self.weight_overlap = weight_overlap
 
-        self.boxpartition = None
-        self.subdomains = None
-        self.overlapping_subdomains = None
+        self.neighbors = boxpart.BoxNeighbors(self.point_dim)
+
+        self.boxpartition = boxpart.parallel_boxpartition(self.points, self.box_length)
+        self.subdomains = {}
+        self.box_overlaps = {}
 
     def domain_decomposition(self):
-        self.boxpartition = boxpart.parallel_boxpartition(self.points, self.box_length)
+        for idx_key in self.boxpartition:
+            self.subdomain_setup(idx_key)
 
-        self.subdomains = {}
-        self.overlapping_subdomains = {key: [] for key in self.boxpartition}
-        overlapping_keys = {key: {key} for key in self.boxpartition}
+    def subdomain_setup(self, idx_key):
+        contained_indices = self.boxpartition[idx_key]
 
-        neighbors = boxpart.BoxNeighbors(self.point_dim)
+        local_center = boxpart.boxcenter(idx_key, self.box_length)
+        surr_indices = []
+        surr_dists = []
 
-        for idx_key, contained_indices in self.boxpartition.items():
-            if not contained_indices:
+        # collect surrounding indices of current box to fulfill minimal cardinality
+        level = 0
+        inside_box = len(contained_indices)
+        inside_sphere = 0
+
+        while inside_sphere < self.min_cardinality:
+            level += 1
+
+            for neighbor_key in self.neighbors.neighbor_indices(idx_key, level):
+                surr_indices.extend(self.boxpartition.get(neighbor_key, []))
+
+            if not surr_indices:
                 continue
 
-            local_center = boxpart.boxcenter(idx_key, self.box_length)
-            surr_indices = []
-            surr_dists = []
+            surr_points = np.array([self.points[i] for i in surr_indices])
+            surr_dists = util.center_distance_arr(local_center, surr_points)
 
-            # collect surrounding indices of current box to fulfill minimal cardinality
-            level = 0
-            inside_box = len(contained_indices)
-            inside_sphere = 0
+            max_delta = (0.5 + level) * self.box_length
+            inside_surrounding = util.count_inside_sphere(surr_dists, max_delta)
+            inside_sphere = inside_box + inside_surrounding
 
-            for neighbor_key in neighbors.neighbor_indices(idx_key, 1):
-                try:
-                    overlapping_keys[neighbor_key].add(idx_key)
-                except KeyError:
-                    pass
+        surr_sorted = np.argsort(surr_dists)
 
-            while inside_sphere < self.min_cardinality:
-                level += 1
-                for neighbor_key in neighbors.neighbor_indices(idx_key, level):
-                    surr_indices.extend(self.boxpartition.get(neighbor_key, []))
+        cardinality = inside_box
+        local_indices = contained_indices.copy()
+        for i in range(surr_sorted.shape[0]):
+            local_delta = surr_dists[i]
+            if local_delta < self.delta or cardinality < self.min_cardinality:
+                local_indices.append(local_indices[i])
+                cardinality += 1
+            else:
+                break
 
-                if not surr_indices:
-                    continue
+        local_points = np.array([self.points[i] for i in local_indices])
+        local_values = np.array([self.values[i] for i in local_indices])
 
-                surr_points = np.array([self.points[i] for i in surr_indices])
-                surr_dists = util.center_distance_arr(local_center, surr_points)
+        dim = local_points.shape[1]
+        n_points = local_points.shape[0]
+        volume = local_delta ** dim * np.pi ** (dim / 2) / gamma(dim / 2 + 1)
+        density = n_points / volume
+        #print(density)
 
-                max_delta = (0.5 + level) * self.box_length
-                inside_surrounding = util.count_inside_sphere(surr_dists, max_delta)
-                inside_sphere = inside_box + inside_surrounding
+        scale_center = np.mean(local_points, axis=0)
+        scale_radius = np.linalg.norm(scale_center - local_points, axis=1).mean() * 2.0
+        scale_func = kernels.generate_scale_func_v1(2*scale_radius, scale_center)
 
-            surr_sorted = np.argsort(surr_dists)
+        #scale_func = kernels.generate_scale_func_v2(0.1*np.sqrt(density))
 
-            cardinality = inside_box
-            local_indices = contained_indices.copy()
-            for i in range(surr_sorted.shape[0]):
-                local_delta = surr_dists[i]
-                if local_delta < self.delta or cardinality < self.min_cardinality:
-                    local_indices.append(local_indices[i])
-                    cardinality += 1
-                else:
-                    break
+        #scale_center = local_center - (scale_center - local_center)
+        #scale_func = kernels.generate_scale_func_v3(local_delta*1.1, scale_center)
+        kernel = kernels.generate_vskernel(self.kernel_func, scale_func)
+        #kernel = kernels.generate_kernel(self.kernel_func, np.sqrt(density))
+        if not hasattr(self, "dummy"):
+            self.dummy = kernels.generate_kernel(self.kernel_func, 0.5)
+        #kernel = self.dummy
 
-            local_points = np.array([self.points[i] for i in local_indices])
-            local_values = np.array([self.values[i] for i in local_indices])
+        interpolator = self.interpolant_type(
+            local_points, local_values, kernel, self.tol
+        )
 
-            interpolator = self.interpolant_type(
-                local_points, local_values, self.vskernel, self.tol
-            )
-
-            self.subdomains[idx_key] = (local_center, interpolator)
-
-        for box_key in self.boxpartition:
-            domains = [self.subdomains[key] for key in overlapping_keys[box_key]]
-            self.overlapping_subdomains[box_key] = domains
+        self.subdomains[idx_key] = interpolator
+        return interpolator
 
     def __call__(self, point):
         point = np.asarray(point)
         box_idx = tuple(boxpart.boxindex(point, self.box_length))
 
+        try:
+            overlaps = self.box_overlaps[box_idx]
+        except KeyError:
+            overlaps = []
+            for level in range(2):
+                for idx_key in self.neighbors.neighbor_indices(box_idx, level):
+                    if idx_key not in self.boxpartition:
+                        continue
+                    center = boxpart.boxcenter(idx_key, self.box_length)
+                    try:
+                        interpolator = self.subdomains[idx_key]
+                    except KeyError:
+                        interpolator = self.subdomain_setup(idx_key)
+                    overlaps.append((center, interpolator))
+
+            self.box_overlaps[box_idx] = overlaps
+
         effective_box_length = self.box_length * (1.0 + self.weight_overlap)
         weight_sum = 0.0
         f = 0.0
 
-        for (center, interpolator) in self.overlapping_subdomains[box_idx]:
+        for (center, interpolator) in overlaps:
             weight = pyramid(point, center, effective_box_length)
             # print(weight)
             weight = weight ** 2
@@ -171,6 +193,6 @@ class RatRBFPartUnityInterpolation:
                 f += weight * interpolator(point)
 
         if weight_sum == 0.0:
-            return ValueError("Point not inside partition!")
+            raise ValueError("Point not inside partition!")
 
         return f / weight_sum
