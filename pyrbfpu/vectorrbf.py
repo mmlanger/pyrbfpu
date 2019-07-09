@@ -34,7 +34,7 @@ class VectorRationalRBF:
         self.alpha = None
         self.beta = None
 
-        self.eval_func = None
+        self.eval_func = interp_eval
 
     def compute(self):
         f = self.values
@@ -57,10 +57,6 @@ class VectorRationalRBF:
 
             self.alpha[:, k] = P @ Vh.T @ ((U.T @ P.T @ (f * c)) / s)
             self.beta[:, k] = c / s[0]
-
-            self.eval_func = interp_eval
-
-        self.eval_func = interp_eval
 
     @property
     def computed(self):
