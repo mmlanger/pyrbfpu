@@ -10,7 +10,7 @@ from pyrbfpu.kernels import kernel_matrix
 
 @nb.njit
 def interp_eval(kernel, points, alpha, beta, x):
-    dim = alpha.shape[0]
+    dim = alpha.shape[1]
     num = np.zeros(dim)
     denom = np.zeros(dim)
 
