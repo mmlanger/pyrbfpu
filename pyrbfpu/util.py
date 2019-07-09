@@ -57,7 +57,7 @@ def bounding_box(points):
 def box_volume(box):
     vol = 1.0
     for k in range(box.shape[1]):
-        vol *= box[0, k] - box[1, k]
+        vol *= abs(box[0, k] - box[1, k])
 
     return vol
 
