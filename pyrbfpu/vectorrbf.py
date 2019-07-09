@@ -49,6 +49,7 @@ class VectorRationalRBF:
             if np.allclose(f, 0.0, rtol=0.0, atol=1e-14):
                 self.alpha[:, k] = 0.0
                 self.beta[:, k] = 1.0
+                continue
 
             H, P = lanczos_decomposition(B, f, self.tol)
             U, s, Vh = np.linalg.svd(H, full_matrices=False)
