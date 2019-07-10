@@ -114,3 +114,38 @@ def lanczos_decomposition(A, f, tol):
         H[i, i - 1] = beta[i - 1]
 
     return H, Q
+
+
+@nb.njit
+def invert_symm_tridiag(T):
+    n = T.shape[0]
+    s = np.zeros((n, n))
+
+    a = np.zeros(n)
+    b = np.zeros(n - 1)
+
+    a[0] = T[0, 0]
+    for i in range(1, n):
+        a[i] = T[i, i]
+        b[i - 1] = -T[i, i - 1]
+
+    v = np.zeros(n)
+    u = np.zeros(n)
+
+    v[0] = 1.0
+    v[1] = a[0] / b[0]
+    for i in range(2, n):
+        v[i] = (a[i - 1] * v[i - 1] - b[i - 2] * v[i - 2]) / b[i - 1]
+
+    u[n - 1] = 1.0 / (-b[n - 2] * v[n - 2] + a[n - 1] * v[n - 1])
+    for i in range(n - 2, 0, -1):
+        u[i] = (1.0 + b[i] * v[i] * u[i + 1]) / (a[i] * v[i] - b[i - 1] * v[i - 1])
+    u[0] = (1.0 + b[0] * v[0] * u[1]) / (a[0] * v[0])
+
+    for i in range(n):
+        for j in range(i, n):
+            val = u[j] * v[i]
+            s[i, j] = val
+            s[j, i] = val
+
+    return s
