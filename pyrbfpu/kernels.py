@@ -65,9 +65,9 @@ def generate_scale_func_v3(r, center):
     return scale_func
 
 
-def generate_kernel(kernel_func, eps):
+def generate_kernel(kernel_func):
     @nb.njit
-    def kernel(x1, x2):
+    def kernel(x1, x2, eps):
         return kernel_func(eps * dist(x1, x2))
 
     return kernel
@@ -75,7 +75,7 @@ def generate_kernel(kernel_func, eps):
 
 def generate_vskernel(kernel_func, scale_func, return_vsdist=False):
     @nb.njit
-    def vsdist(x1, x2):
+    def vsdist(x1, x2, param):
         n = x1.shape[0]
 
         r_sqr = 0.0
@@ -83,33 +83,16 @@ def generate_vskernel(kernel_func, scale_func, return_vsdist=False):
             diff = x1[i] - x2[i]
             r_sqr += diff * diff
 
-        diff = scale_func(x1) - scale_func(x2)
+        diff = scale_func(x1, param) - scale_func(x2, param)
         r_sqr += diff * diff
         return np.sqrt(r_sqr)
 
     @nb.njit
-    def vskernel(x1, x2):
-        r = vsdist(x1, x2)
+    def vskernel(x1, x2, param):
+        r = vsdist(x1, x2, param)
         return kernel_func(r)
 
     if return_vsdist:
         return vsdist, vskernel
     else:
         return vskernel
-
-
-@nb.njit
-def kernel_matrix(kernel, points, reg_mu=0.0):
-    n = points.shape[0]
-
-    A = np.zeros((n, n), dtype=np.float64)
-    for i in range(n):
-        A[i, i] = kernel(points[i], points[i]) + reg_mu
-
-        for j in range(i + 1, n):
-            val = kernel(points[i], points[j])
-            if val != 0.0:
-                A[i, j] = val
-                A[j, i] = val
-
-    return A

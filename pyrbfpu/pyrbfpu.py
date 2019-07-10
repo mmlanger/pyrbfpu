@@ -54,7 +54,7 @@ class RatRBFPartUnityInterpolation:
             self.delta = estimate_delta(self.points, self.min_cardinality)
         else:
             self.delta = init_delta
-        self.box_length = 0.9 * 2 * np.sqrt(self.delta ** 2 / self.point_dim)
+        self.box_length = 0.95 * 2 * np.sqrt(self.delta ** 2 / self.point_dim)
 
         if rbf == "imq":
             self.kernel_func = kernels.imq
@@ -66,6 +66,13 @@ class RatRBFPartUnityInterpolation:
             self.kernel_func = kernels.wendland_C4
         else:
             raise ValueError("Unknown rbf function!")
+
+        # @nb.njit
+        # def scale_func(x, u):
+        #     return u * np.linalg.norm(x)
+
+        # self.kernel = kernels.generate_vskernel(self.kernel_func, scale_func)
+        self.kernel = kernels.generate_kernel(self.kernel_func)
 
         if len(self.values.shape) > 1:
             self.interpolant_type = VectorRationalRBF
@@ -114,13 +121,14 @@ class RatRBFPartUnityInterpolation:
             inside_sphere = inside_box + inside_surrounding
 
         surr_sorted = np.argsort(surr_dists)
+        surr_dists = surr_dists[surr_sorted]
+        surr_indices = np.array(surr_indices)[surr_sorted]
 
         cardinality = inside_box
         local_indices = contained_indices.copy()
-        for i in range(surr_sorted.shape[0]):
-            local_delta = surr_dists[i]
+        for point_idx, local_delta in zip(surr_indices, surr_dists):
             if local_delta < self.delta or cardinality < self.min_cardinality:
-                local_indices.append(local_indices[i])
+                local_indices.append(point_idx)
                 cardinality += 1
             else:
                 break
@@ -128,28 +136,9 @@ class RatRBFPartUnityInterpolation:
         local_points = np.array([self.points[i] for i in local_indices])
         local_values = np.array([self.values[i] for i in local_indices])
 
-        dim = local_points.shape[1]
-        n_points = local_points.shape[0]
-        volume = local_delta ** dim * np.pi ** (dim / 2) / gamma(dim / 2 + 1)
-        density = n_points / volume
-        #print(density)
-
-        scale_center = np.mean(local_points, axis=0)
-        scale_radius = np.linalg.norm(scale_center - local_points, axis=1).mean() * 2.0
-        scale_func = kernels.generate_scale_func_v1(2*scale_radius, scale_center)
-
-        #scale_func = kernels.generate_scale_func_v2(0.1*np.sqrt(density))
-
-        #scale_center = local_center - (scale_center - local_center)
-        #scale_func = kernels.generate_scale_func_v3(local_delta*1.1, scale_center)
-        kernel = kernels.generate_vskernel(self.kernel_func, scale_func)
-        #kernel = kernels.generate_kernel(self.kernel_func, np.sqrt(density))
-        if not hasattr(self, "dummy"):
-            self.dummy = kernels.generate_kernel(self.kernel_func, 0.5)
-        #kernel = self.dummy
-
+        param = 2.5 * local_delta / np.sqrt(len(local_indices))
         interpolator = self.interpolant_type(
-            local_points, local_values, kernel, self.tol
+            local_points, local_values, self.kernel, param, self.tol
         )
 
         self.subdomains[idx_key] = interpolator
@@ -182,12 +171,13 @@ class RatRBFPartUnityInterpolation:
 
         for (center, interpolator) in overlaps:
             weight = pyramid(point, center, effective_box_length)
-            # print(weight)
+            #print(weight)
             weight = weight ** 2
             if weight > 0.0:
                 weight_sum += weight
 
                 if not interpolator.computed:
+                    interpolator.optimize_param()
                     interpolator.compute()
 
                 f += weight * interpolator(point)

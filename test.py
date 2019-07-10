@@ -1,10 +1,17 @@
 import numpy as np
-from pyrbfpu.common import *
+from pyrbfpu.pyrbfpu import RatRBFPartUnityInterpolation
 
 
 np.random.seed(12351)
 points = np.random.normal(0, 3, (4000, 2))
-test_set = np.random.uniform(-7, 7, (25, 2))
+#points = np.random.uniform(-7, 7, (4000, 2))
+
+# x, y = np.mgrid[-7:7:50j, -7:7:50j]
+# x = x.flatten()
+# y = y.flatten()
+# points = np.array([x, y]).T
+
+test_set = np.random.uniform(-6, 6, (20, 2))
 sort_idx = np.linalg.norm(test_set, axis=1).argsort()
 test_set = test_set[sort_idx]
 tt = np.linalg.norm(test_set, axis=1)
@@ -18,7 +25,7 @@ def test_func(point):
 
 vals = np.array([test_func(x) for x in points])
 
-pu = RatRBFPartUnityInterpolation(points, vals, 100)
+pu = RatRBFPartUnityInterpolation(points, vals, 60)
 
 for point in [points[211], points[523]]:
     error = pu(point) - test_func(point)
