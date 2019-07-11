@@ -65,7 +65,7 @@ class VectorRationalRBF:
         for k in range(self.values.shape[1]):
             f = self.values[:, k]
 
-            if np.allclose(f, 0.0, rtol=0.0, atol=1e-14):
+            if np.allclose(f, 0.0, rtol=0.0, atol=self.tol):
                 self.alpha[:, k] = 0.0
                 self.beta[:, k] = 1.0
                 continue
@@ -96,7 +96,7 @@ class VectorRationalRBF:
         H, P = lanczos_decomposition(B, f, self.tol)
         Hinv = invert_symm_tridiag(H)
         Binv = P @ Hinv @ P.T
-        coeffs = Binv @ f
+        coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
 
         return np.linalg.norm(coeffs / np.diagonal(Binv))
 

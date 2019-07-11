@@ -42,7 +42,7 @@ class RatRBFPartUnityInterpolation:
         min_cardinality=50,
         weight_overlap=0.01,
         init_delta=None,
-        rbf="gauss",
+        rbf="imq",
         tol=1e-14,
     ):
         self.points = points
