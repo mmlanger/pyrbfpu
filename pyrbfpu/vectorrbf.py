@@ -3,7 +3,7 @@ from scipy.optimize import minimize
 
 import numba as nb
 
-from pyrbfpu.util import lanczos_decomposition, invert_symm_tridiag
+from pyrbfpu import util
 
 
 @nb.njit
@@ -43,7 +43,9 @@ class VectorRationalRBF:
         self.points = points
         self.values = values
 
-        self.optimize_values = np.linalg.norm(self.values, axis=1)
+        #self.optimize_values = np.linalg.norm(self.values, axis=1)
+        f_norms = np.linalg.norm(self.values, axis=0)
+        self.optimize_values = self.values[:, np.argmin(f_norms)]
 
         self.param = init_param
 
@@ -70,7 +72,7 @@ class VectorRationalRBF:
                 self.beta[:, k] = 1.0
                 continue
 
-            H, P = lanczos_decomposition(B, f, self.tol)
+            H, P = util.lanczos_decomposition(B, f, self.tol)
             U, s, Vh = np.linalg.svd(H, full_matrices=False)
 
             c = P @ (Vh[0] / s[0])
@@ -79,7 +81,11 @@ class VectorRationalRBF:
             self.beta[:, k] = c / s[0]
 
     def optimize_param(self):
-        # print("before {}".format(self.estimate_error([self.param])))
+        # print(
+        #     "before {} with param={}".format(
+        #         self.estimate_error([self.param]), self.param
+        #     )
+        # )
         res = minimize(
             self.estimate_error,
             self.param,
@@ -88,18 +94,22 @@ class VectorRationalRBF:
             options=dict(maxiter=150),
         )
         self.param = res.x[0]
-        # print("after  {}".format(self.estimate_error([self.param])))
+        # print(
+        #     "after  {} with param={}".format(
+        #         self.estimate_error([self.param]), self.param
+        #     )
+        # )
 
-    def estimate_error(self, param):
+    def estimate_error(self, param_arr):
         f = self.optimize_values
-        B = kernel_matrix(self.kernel, self.points, param[0])
+        B = util.kernel_matrix(self.kernel, self.points, param_arr[0])
 
-        H, P = lanczos_decomposition(B, f, self.tol)
-        Hinv = invert_symm_tridiag(H)
+        H, P = util.lanczos_decomposition(B, f, self.tol)
+        Hinv = util.invert_symm_tridiag(H)
         Binv = P @ Hinv @ P.T
-        coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
+        scaled_coeffs = P @ Hinv[0, :]
 
-        return np.linalg.norm(coeffs / np.diagonal(Binv))
+        return util.accumulate_error(scaled_coeffs, Binv)
 
     @property
     def computed(self):

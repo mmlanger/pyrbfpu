@@ -1,28 +1,9 @@
 import numpy as np
-from scipy.linalg import lu, ldl, solve_triangular
-from scipy.sparse.linalg import eigsh, spsolve_triangular
 from scipy.optimize import minimize
 
 import numba as nb
 
-from pyrbfpu.util import lanczos_decomposition, invert_symm_tridiag
-
-
-@nb.njit
-def kernel_matrix(kernel, points, param):
-    n = points.shape[0]
-
-    A = np.zeros((n, n), dtype=np.float64)
-    for i in range(n):
-        A[i, i] = kernel(points[i], points[i], param)
-
-        for j in range(i + 1, n):
-            val = kernel(points[i], points[j], param)
-            if val != 0.0:
-                A[i, j] = val
-                A[j, i] = val
-
-    return A
+from pyrbfpu import util
 
 
 @nb.njit
@@ -58,9 +39,9 @@ class RationalRBF:
     def compute(self):
         f = self.values
 
-        B = kernel_matrix(self.kernel, self.points, self.param)
-        H, P = lanczos_decomposition(B, f, self.tol)
-        #print(H.shape[0])
+        B = util.kernel_matrix(self.kernel, self.points, self.param)
+        H, P = util.lanczos_decomposition(B, f, self.tol)
+        # print(H.shape[0])
         U, s, Vh = np.linalg.svd(H, full_matrices=False)
 
         c = P @ (Vh[0] / s[0])
@@ -72,10 +53,10 @@ class RationalRBF:
 
     def compute_nonrational(self):
         f = self.values
-        B = kernel_matrix(self.kernel, self.points, self.param)
+        B = util.kernel_matrix(self.kernel, self.points, self.param)
 
-        H, P = lanczos_decomposition(B, f, self.tol)
-        Hinv = invert_symm_tridiag(H)
+        H, P = util.lanczos_decomposition(B, f, self.tol)
+        Hinv = util.invert_symm_tridiag(H)
         self.alpha = (P @ Hinv[0, :]) * np.linalg.norm(f)
 
         @nb.njit
@@ -89,7 +70,7 @@ class RationalRBF:
         self.eval_func = interp_eval
 
     def optimize_param(self):
-        #print("before {}".format(self.estimate_error([self.param])))
+        # print("before {}".format(self.estimate_error([self.param])))
         res = minimize(
             self.estimate_error,
             self.param,
@@ -98,18 +79,18 @@ class RationalRBF:
             options=dict(maxiter=150),
         )
         self.param = res.x[0]
-        #print("after  {}".format(self.estimate_error([self.param])))
+        # print("after  {}".format(self.estimate_error([self.param])))
 
-    def estimate_error(self, param):
+    def estimate_error(self, param_arr):
         f = self.values
-        B = kernel_matrix(self.kernel, self.points, param[0])
+        B = util.kernel_matrix(self.kernel, self.points, param_arr[0])
 
-        H, P = lanczos_decomposition(B, f, self.tol)
-        Hinv = invert_symm_tridiag(H)
+        H, P = util.lanczos_decomposition(B, f, self.tol)
+        Hinv = util.invert_symm_tridiag(H)
         Binv = P @ Hinv @ P.T
-        coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
+        scaled_coeffs = P @ Hinv[0, :]
 
-        return np.linalg.norm(coeffs / np.diagonal(Binv))
+        return util.accumulate_error(scaled_coeffs, Binv)
 
     @property
     def computed(self):

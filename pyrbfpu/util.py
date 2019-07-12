@@ -149,3 +149,30 @@ def invert_symm_tridiag(T):
             s[j, i] = val
 
     return s
+
+
+@nb.njit
+def kernel_matrix(kernel, points, param):
+    n = points.shape[0]
+
+    A = np.zeros((n, n), dtype=np.float64)
+    for i in range(n):
+        A[i, i] = kernel(points[i], points[i], param)
+
+        for j in range(i + 1, n):
+            val = kernel(points[i], points[j], param)
+            if val != 0.0:
+                A[i, j] = val
+                A[j, i] = val
+
+    return A
+
+
+@nb.njit
+def accumulate_error(coeffs, Binv):
+    result = 0.0
+    for i in range(coeffs.shape[0]):
+        error = coeffs[i] / Binv[i, i]
+        result += error * error
+
+    return result

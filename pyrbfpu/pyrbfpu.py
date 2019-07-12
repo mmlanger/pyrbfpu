@@ -39,10 +39,11 @@ class RatRBFPartUnityInterpolation:
         self,
         points,
         values,
-        min_cardinality=50,
+        min_cardinality=100,
+        max_cardinality=None,
         weight_overlap=0.01,
         init_delta=None,
-        rbf="imq",
+        rbf="gauss",
         tol=1e-14,
     ):
         self.points = points
@@ -50,22 +51,30 @@ class RatRBFPartUnityInterpolation:
         self.point_dim = points.shape[1]
 
         self.min_cardinality = min_cardinality
+        if max_cardinality is None:
+            self.max_cardinality = 2 * self.min_cardinality
+        else:
+            self.max_cardinality = max_cardinality
+
         if init_delta is None:
             self.delta = estimate_delta(self.points, self.min_cardinality)
         else:
             self.delta = init_delta
         self.box_length = 0.95 * 2 * np.sqrt(self.delta ** 2 / self.point_dim)
 
-        if rbf == "imq":
-            self.kernel_func = kernels.imq
-        elif rbf == "gauss":
-            self.kernel_func = kernels.gauss
-        elif rbf == "wendland":
-            self.kernel_func = kernels.wendland
-        elif rbf == "wendland_C4":
-            self.kernel_func = kernels.wendland_C4
+        if isinstance(rbf, str):
+            if rbf == "imq":
+                self.kernel_func = kernels.imq
+            elif rbf == "gauss":
+                self.kernel_func = kernels.gauss
+            elif rbf == "wendland":
+                self.kernel_func = kernels.wendland
+            elif rbf == "wendland_C4":
+                self.kernel_func = kernels.wendland_C4
+            else:
+                raise ValueError("Unknown rbf function!")
         else:
-            raise ValueError("Unknown rbf function!")
+            self.kernel_func = rbf
 
         # @nb.njit
         # def scale_func(x, u):
@@ -136,13 +145,31 @@ class RatRBFPartUnityInterpolation:
         local_points = np.array([self.points[i] for i in local_indices])
         local_values = np.array([self.values[i] for i in local_indices])
 
-        param = 2.5 * local_delta / np.sqrt(len(local_indices))
-        interpolator = self.interpolant_type(
-            local_points, local_values, self.kernel, param, self.tol
-        )
+        #param = 2.5 * local_delta / np.sqrt(len(local_indices))
+
+        param = 1.0
+        if cardinality <= self.max_cardinality:
+            interpolator = self.interpolant_type(
+                local_points, local_values, self.kernel, param, self.tol
+            )
+        else:
+            interpolator = RatRBFPartUnityInterpolation(
+                local_points,
+                local_values,
+                min_cardinality=self.min_cardinality,
+                max_cardinality=self.max_cardinality,
+                weight_overlap=self.weight_overlap,
+                rbf=self.kernel_func,
+                tol=self.tol,
+            )
 
         self.subdomains[idx_key] = interpolator
         return interpolator
+
+    @property
+    def computed(self):
+        # for lazy evaluation only the box partition is necessary
+        return True
 
     def __call__(self, point):
         point = np.asarray(point)
@@ -171,7 +198,7 @@ class RatRBFPartUnityInterpolation:
 
         for (center, interpolator) in overlaps:
             weight = pyramid(point, center, effective_box_length)
-            #print(weight)
+            # print(weight)
             weight = weight ** 2
             if weight > 0.0:
                 weight_sum += weight
