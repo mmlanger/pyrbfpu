@@ -93,7 +93,7 @@ class RatRBFPartUnityInterpolation:
             self.subdomain_setup(idx_key)
 
     def subdomain_setup(self, idx_key):
-        contained_indices = self.boxpartition[idx_key]
+        contained_indices = self.boxpartition.get(idx_key, [])
 
         local_center = boxpart.boxcenter(idx_key, self.box_length)
         surr_indices = []
@@ -154,7 +154,7 @@ class RatRBFPartUnityInterpolation:
             overlaps = []
             for level in range(2):
                 for idx_key in self.neighbors.neighbor_indices(box_idx, level):
-                    if idx_key not in self.boxpartition:
+                    if level > 0 and idx_key not in self.boxpartition:
                         continue
                     center = boxpart.boxcenter(idx_key, self.box_length)
                     try:
