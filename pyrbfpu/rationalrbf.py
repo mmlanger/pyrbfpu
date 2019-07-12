@@ -93,8 +93,9 @@ class RationalRBF:
         res = minimize(
             self.estimate_error,
             self.param,
-            method="Nelder-Mead",
-            options=dict(maxiter=50),
+            method="L-BFGS-B",
+            bounds=[(1e-6, 200.0)],
+            options=dict(maxiter=150),
         )
         self.param = res.x[0]
         #print("after  {}".format(self.estimate_error([self.param])))
