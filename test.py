@@ -25,7 +25,7 @@ def test_func(point):
 
 vals = np.array([test_func(x) for x in points])
 
-pu = RatRBFPartUnityInterpolation(points, vals, 100)
+pu = RatRBFPartUnityInterpolation(points, vals, 100, tol=1e-14)
 
 for point in [points[211], points[523]]:
     error = pu(point) - test_func(point)

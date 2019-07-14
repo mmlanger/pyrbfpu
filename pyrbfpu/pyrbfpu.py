@@ -43,7 +43,7 @@ class RatRBFPartUnityInterpolation:
         max_cardinality=None,
         weight_overlap=0.01,
         init_delta=None,
-        rbf="gauss",
+        rbf="imq",
         tol=1e-14,
     ):
         self.points = points
@@ -145,9 +145,8 @@ class RatRBFPartUnityInterpolation:
         local_points = np.array([self.points[i] for i in local_indices])
         local_values = np.array([self.values[i] for i in local_indices])
 
-        #param = 2.5 * local_delta / np.sqrt(len(local_indices))
+        param = 0.4 * np.sqrt(len(local_indices)) / local_delta
 
-        param = 1.0
         if cardinality <= self.max_cardinality:
             interpolator = self.interpolant_type(
                 local_points, local_values, self.kernel, param, self.tol

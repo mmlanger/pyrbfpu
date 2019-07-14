@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize_scalar
 
 import numba as nb
 
@@ -41,7 +41,6 @@ class RationalRBF:
 
         B = util.kernel_matrix(self.kernel, self.points, self.param)
         H, P = util.lanczos_decomposition(B, f, self.tol)
-        # print(H.shape[0])
         U, s, Vh = np.linalg.svd(H, full_matrices=False)
 
         c = P @ (Vh[0] / s[0])
@@ -70,26 +69,46 @@ class RationalRBF:
         self.eval_func = interp_eval
 
     def optimize_param(self):
-        # print("before {}".format(self.estimate_error([self.param])))
-        res = minimize(
-            self.estimate_error,
-            self.param,
-            method="L-BFGS-B",
-            bounds=[(1e-6, 200.0)],
-            options=dict(maxiter=150),
+        print(
+            "before {} with param={}".format(
+                self.estimate_error(self.param), self.param
+            )
         )
-        self.param = res.x[0]
-        # print("after  {}".format(self.estimate_error([self.param])))
+        candidates = [0.1, 0.2, 0.5, 0.75, 1.0, 1.5, 5.0]
+        if self.param not in candidates:
+            candidates.append(self.param)
+        errors = [(eps, self.estimate_error(eps)) for eps in candidates]
+        self.param, err = min(errors, key=lambda x: x[1])
+        # res = minimize_scalar(
+        #     self.estimate_error,
+        #     bracket=(1e-6, 5.0),
+        #     bounds=(1e-6, 5.0),
+        #     method="Bounded",
+        #     tol=1e-3,
+        # )
+        # self.param = res.x
+        print(
+            "after  {} with param={}".format(
+                self.estimate_error(self.param), self.param
+            )
+        )
 
-    def estimate_error(self, param_arr):
+    def estimate_error(self, param):
         f = self.values
-        B = util.kernel_matrix(self.kernel, self.points, param_arr[0])
+        B = util.kernel_matrix(self.kernel, self.points, param)
 
         H, P = util.lanczos_decomposition(B, f, self.tol)
         Hinv = util.invert_symm_tridiag(H)
-        Binv = P @ Hinv @ P.T
-        scaled_coeffs = P @ Hinv[0, :]
+        K = P @ Hinv
+        Binv = K @ P.T
+        scaled_coeffs = K[:, 0]
 
+        # print("reduction from {} to {}".format(f.shape[0], H.shape[0]))
+        # if hasattr(self, "counter"):
+        #     self.counter += 1
+        # else:
+        #     self.counter = 1
+      
         return util.accumulate_error(scaled_coeffs, Binv)
 
     @property

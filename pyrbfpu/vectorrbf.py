@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize_scalar
 
 import numba as nb
 
@@ -43,7 +43,7 @@ class VectorRationalRBF:
         self.points = points
         self.values = values
 
-        #self.optimize_values = np.linalg.norm(self.values, axis=1)
+        # self.optimize_values = np.linalg.norm(self.values, axis=1)
         f_norms = np.linalg.norm(self.values, axis=0)
         self.optimize_values = self.values[:, np.argmin(f_norms)]
 
@@ -81,28 +81,33 @@ class VectorRationalRBF:
             self.beta[:, k] = c / s[0]
 
     def optimize_param(self):
-        # print(
-        #     "before {} with param={}".format(
-        #         self.estimate_error([self.param]), self.param
-        #     )
-        # )
-        res = minimize(
-            self.estimate_error,
-            self.param,
-            method="L-BFGS-B",
-            bounds=[(1e-6, 200.0)],
-            options=dict(maxiter=150),
+        print(
+            "before {} with param={}".format(
+                self.estimate_error(self.param), self.param
+            )
         )
-        self.param = res.x[0]
-        # print(
-        #     "after  {} with param={}".format(
-        #         self.estimate_error([self.param]), self.param
-        #     )
+        candidates = [0.1, 0.2, 0.5, 0.75, 1.0, 1.5, 5.0]
+        if self.param not in candidates:
+            candidates.append(self.param)
+        errors = [(eps, self.estimate_error(eps)) for eps in candidates]
+        self.param, err = min(errors, key=lambda x: x[1])
+        # res = minimize_scalar(
+        #     self.estimate_error,
+        #     bracket=(1e-6, 5.0),
+        #     bounds=(1e-6, 5.0),
+        #     method="Bounded",
+        #     tol=1e-3,
         # )
+        # self.param = res.x
+        print(
+            "after  {} with param={}".format(
+                self.estimate_error(self.param), self.param
+            )
+        )
 
-    def estimate_error(self, param_arr):
+    def estimate_error(self, param):
         f = self.optimize_values
-        B = util.kernel_matrix(self.kernel, self.points, param_arr[0])
+        B = util.kernel_matrix(self.kernel, self.points, param)
 
         H, P = util.lanczos_decomposition(B, f, self.tol)
         Hinv = util.invert_symm_tridiag(H)
