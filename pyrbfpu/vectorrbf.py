@@ -21,23 +21,6 @@ def interp_eval(kernel, points, alpha, beta, x, param):
     return num / denom
 
 
-@nb.njit
-def kernel_matrix(kernel, points, param):
-    n = points.shape[0]
-
-    A = np.zeros((n, n), dtype=np.float64)
-    for i in range(n):
-        A[i, i] = kernel(points[i], points[i], param)
-
-        for j in range(i + 1, n):
-            val = kernel(points[i], points[j], param)
-            if val != 0.0:
-                A[i, j] = val
-                A[j, i] = val
-
-    return A
-
-
 class VectorRationalRBF:
     def __init__(self, points, values, kernel, init_param, tol=1e-14):
         self.points = points
@@ -59,7 +42,7 @@ class VectorRationalRBF:
 
     def compute(self):
         f = self.values
-        B = kernel_matrix(self.kernel, self.points, self.param)
+        B = util.kernel_matrix(self.kernel, self.points, self.param)
 
         self.alpha = np.zeros(f.shape)
         self.beta = np.zeros(f.shape)

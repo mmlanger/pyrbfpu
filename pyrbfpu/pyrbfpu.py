@@ -64,11 +64,11 @@ class RatRBFPartUnityInterpolation:
 
         if isinstance(rbf, str):
             if rbf == "imq":
-                self.kernel_func = kernels.imq
-            elif rbf == "gauss":
-                self.kernel_func = kernels.gauss
-            elif rbf == "wendland":
-                self.kernel_func = kernels.wendland
+                self.kernel_func = kernels.inverse_multiquadric
+            elif rbf == "gaussian":
+                self.kernel_func = kernels.gaussian
+            elif rbf == "wendland_C2":
+                self.kernel_func = kernels.wendland_C2
             elif rbf == "wendland_C4":
                 self.kernel_func = kernels.wendland_C4
             else:
@@ -76,11 +76,6 @@ class RatRBFPartUnityInterpolation:
         else:
             self.kernel_func = rbf
 
-        # @nb.njit
-        # def scale_func(x, u):
-        #     return u * np.linalg.norm(x)
-
-        # self.kernel = kernels.generate_vskernel(self.kernel_func, scale_func)
         self.kernel = kernels.generate_kernel(self.kernel_func)
 
         if len(self.values.shape) > 1:

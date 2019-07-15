@@ -5,7 +5,66 @@ from pyrbfpu.util import dist
 
 
 @nb.njit
-def wendland(r):
+def linear(r):
+    return r
+
+
+@nb.njit
+def cubic(r):
+    return r * r * r
+
+
+@nb.njit
+def quintic(r):
+    r_sqr = r * r
+    return r_sqr * r_sqr * r
+
+
+@nb.njit
+def thin_plate_spline(r):
+    if r == 0.0:
+        return 0.0
+    return r * r * np.log(r)
+
+
+@nb.njit
+def gaussian(r):
+    return np.exp(-r * r)
+
+
+@nb.njit
+def multiquadric(r):
+    return np.sqrt(1.0 + r * r)
+
+
+@nb.njit
+def inverse_multiquadric(r):
+    return 1.0 / np.sqrt(1.0 + r * r)
+
+
+@nb.njit
+def matern_C0(r):
+    return np.exp(-r)
+
+
+@nb.njit
+def matern_C2(r):
+    return np.exp(-r) * (1.0 + r)
+
+
+@nb.njit
+def matern_C4(r):
+    return np.exp(-r) * (3.0 + 3.0 * r + r * r)
+
+
+@nb.njit
+def wendland_C0(r):
+    base = max(1.0 - r, 0.0)
+    return base * base
+
+
+@nb.njit
+def wendland_C2(r):
     base = max(1.0 - r, 0.0)
     if base == 0.0:
         return 0.0
@@ -27,14 +86,23 @@ def wendland_C4(r):
     return base_quad * base_quad * (32.0 * r_cubic + 25.0 * r_sqr + 8.0 * r + 1.0)
 
 
-@nb.njit
-def gauss(r):
-    return np.exp(-r * r)
+def generate_kernel(kernel_func):
+    @nb.njit
+    def kernel(x1, x2, eps):
+        return kernel_func(eps * dist(x1, x2))
+
+    return kernel
 
 
-@nb.njit
-def imq(r):
-    return 1.0 / np.sqrt(1.0 + r * r)
+def generate_hybrid_kernel(kernel_func_alpha, kernel_func_beta, gamma):
+    @nb.njit
+    def kernel(x1, x2, eps):
+        d = dist(x1, x2)
+        k_alpha = kernel_func_alpha(eps * d)
+        k_beta = kernel_func_beta(eps * d)
+        return k_alpha + gamma * k_beta
+
+    return kernel
 
 
 def generate_scale_func_v1(r, center):
@@ -63,14 +131,6 @@ def generate_scale_func_v3(r, center):
         return np.sqrt(r * r - norm_sqr)
 
     return scale_func
-
-
-def generate_kernel(kernel_func):
-    @nb.njit
-    def kernel(x1, x2, eps):
-        return kernel_func(eps * dist(x1, x2))
-
-    return kernel
 
 
 def generate_vskernel(kernel_func, scale_func, return_vsdist=False):

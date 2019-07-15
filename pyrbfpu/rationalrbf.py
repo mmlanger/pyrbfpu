@@ -53,6 +53,7 @@ class RationalRBF:
     def compute_nonrational(self):
         f = self.values
         B = util.kernel_matrix(self.kernel, self.points, self.param)
+        #B -= 1e-4 * np.eye(f.shape[0])
 
         H, P = util.lanczos_decomposition(B, f, self.tol)
         Hinv = util.invert_symm_tridiag(H)
