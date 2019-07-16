@@ -43,18 +43,23 @@ def inverse_multiquadric(r):
 
 
 @nb.njit
-def matern_C0(r):
+def matern_basic(r):
     return np.exp(-r)
 
 
 @nb.njit
-def matern_C2(r):
+def matern_linear(r):
     return np.exp(-r) * (1.0 + r)
 
 
 @nb.njit
-def matern_C4(r):
+def matern_quadratic(r):
     return np.exp(-r) * (3.0 + 3.0 * r + r * r)
+
+
+@nb.njit
+def matern_cubic(r):
+    return np.exp(-r) * (15.0 + 15.0 * r + 6.0 * r * r + r * r * r)
 
 
 @nb.njit

@@ -1,5 +1,5 @@
 import numpy as np
-from pyrbfpu.pyrbfpu import RatRBFPartUnityInterpolation
+from pyrbfpu.rbfpu import RatRBFPartUnityInterpolation
 
 
 np.random.seed(12351)

@@ -7,31 +7,13 @@ import numba as nb
 
 from pyrbfpu import kernels, util
 from pyrbfpu import boxpartition as boxpart
-from pyrbfpu.rationalrbf import RationalRBF
-from pyrbfpu.vectorrbf import VectorRationalRBF
+from pyrbfpu.rbf import RBFInterpolation
 
 
 @nb.njit
 def pyramid(point, center, box_length):
     diffs = np.abs(point - center) / box_length
     return max(1.0 - 2.0 * diffs.max(), 0.0)
-
-
-def estimate_delta(points, min_cardinality):
-    n_points = points.shape[0]
-    point_dim = points.shape[1]
-
-    bounding_box = util.bounding_box(points)
-    bounding_vol = util.box_volume(bounding_box)
-
-    density = n_points / bounding_vol
-    domain_vol = min_cardinality / density
-
-    num = gamma(point_dim / 2 + 1) * domain_vol
-    denom = np.pi ** (point_dim / 2)
-    delta = (num / denom) ** (1 / point_dim)
-
-    return delta
 
 
 class RatRBFPartUnityInterpolation:
@@ -46,42 +28,44 @@ class RatRBFPartUnityInterpolation:
         rbf="imq",
         tol=1e-14,
     ):
-        self.points = points
-        self.values = values
-        self.point_dim = points.shape[1]
+        if len(points.shape) == 1:
+            self.points = points.reshape((values.shape[0], 1))
+        else:
+            self.points = points
 
-        self.min_cardinality = min_cardinality
+        self.point_dim = self.points.shape[1]
+        self.values = values
+
+        self.min_cardinality = min(min_cardinality, self.points.shape[0])
         if max_cardinality is None:
             self.max_cardinality = 2 * self.min_cardinality
         else:
             self.max_cardinality = max_cardinality
 
         if init_delta is None:
-            self.delta = estimate_delta(self.points, self.min_cardinality)
+            bounding_box = util.bounding_box(self.points)
+            bounding_vol = util.box_volume(bounding_box)
+
+            density = self.points.shape[0] / bounding_vol
+            domain_vol = self.min_cardinality / density
+
+            num = gamma(self.point_dim / 2 + 1) * domain_vol
+            denom = np.pi ** (self.point_dim / 2)
+            self.delta = (num / denom) ** (1 / self.point_dim)
         else:
             self.delta = init_delta
+
         self.box_length = 0.95 * 2 * np.sqrt(self.delta ** 2 / self.point_dim)
 
         if isinstance(rbf, str):
-            if rbf == "imq":
-                self.kernel_func = kernels.inverse_multiquadric
-            elif rbf == "gaussian":
-                self.kernel_func = kernels.gaussian
-            elif rbf == "wendland_C2":
-                self.kernel_func = kernels.wendland_C2
-            elif rbf == "wendland_C4":
-                self.kernel_func = kernels.wendland_C4
+            if hasattr(kernels, rbf):
+                self.kernel_func = getattr(kernels, rbf)
             else:
                 raise ValueError("Unknown rbf function!")
         else:
             self.kernel_func = rbf
 
         self.kernel = kernels.generate_kernel(self.kernel_func)
-
-        if len(self.values.shape) > 1:
-            self.interpolant_type = VectorRationalRBF
-        else:
-            self.interpolant_type = RationalRBF
 
         self.tol = tol
         self.weight_overlap = weight_overlap
@@ -143,7 +127,7 @@ class RatRBFPartUnityInterpolation:
         param = 0.4 * np.sqrt(len(local_indices)) / local_delta
 
         if cardinality <= self.max_cardinality:
-            interpolator = self.interpolant_type(
+            interpolator = RBFInterpolation(
                 local_points, local_values, self.kernel, param, self.tol
             )
         else:
