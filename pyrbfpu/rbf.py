@@ -101,7 +101,7 @@ class RBFInterpolation:
 
                 self.eval_func = lin_interp_eval_vector
             else:
-                self.alpha = self.compute_rational(self.values)
+                self.alpha = self.compute_linear(self.values)
                 self.eval_func = lin_interp_eval_scalar
 
     def compute_rational(self, f):
