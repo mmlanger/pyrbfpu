@@ -157,13 +157,44 @@ def kernel_matrix(kernel, points, param):
 
     A = np.zeros((n, n), dtype=np.float64)
     for i in range(n):
-        A[i, i] = kernel(points[i], points[i], param)
+        point = points[i]
+        A[i, i] = kernel(point, point, param)
 
         for j in range(i + 1, n):
-            val = kernel(points[i], points[j], param)
+            val = kernel(point, points[j], param)
             if val != 0.0:
                 A[i, j] = val
                 A[j, i] = val
+
+    return A
+
+
+@nb.njit
+def augmented_kernel_matrix(kernel, points, param):
+    dim = points.shape[1]
+    n = points.shape[0]
+
+    A = np.zeros((n + 1 + dim, n + 1 + dim), dtype=np.float64)
+    for i in range(n):
+        point = points[i]
+        A[i, i] = kernel(point, point, param)
+
+        for j in range(i + 1, n):
+            val = kernel(point, points[j], param)
+            if val != 0.0:
+                A[i, j] = val
+                A[j, i] = val
+
+    for j in range(i + 1, n):
+        A[n, j] = 1.0
+        A[j, n] = 1.0
+
+    for i in range(n + 1, n + 1 + dim):
+        dim_idx = i - 1 - n
+        for j in range(i + 1, n):
+            val = points[i, dim_idx]
+            A[i, j] = val
+            A[j, i] = val
 
     return A
 

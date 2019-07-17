@@ -21,7 +21,7 @@ def quintic(r):
 
 
 @nb.njit
-def thin_plate_spline(r):
+def thin_plate(r):
     if r == 0.0:
         return 0.0
     return r * r * np.log(r)
@@ -87,8 +87,50 @@ def wendland_C4(r):
     base_sqr = base * base
     base_quad = base_sqr * base_sqr
     r_sqr = r * r
+    return base_quad * base_sqr * (35.0 * r_sqr + 18.0 * r + 3.0)
+
+
+@nb.njit
+def wendland_C6(r):
+    base = max(1.0 - r, 0.0)
+    if base == 0.0:
+        return 0.0
+
+    base_sqr = base * base
+    base_quad = base_sqr * base_sqr
+    r_sqr = r * r
     r_cubic = r_sqr * r
     return base_quad * base_quad * (32.0 * r_cubic + 25.0 * r_sqr + 8.0 * r + 1.0)
+
+
+@nb.njit
+def buhmann_C2(r):
+    r_sqr = r * r
+    r_cubic = r_sqr * r
+    r_quad = r_sqr * r_sqr
+    result = (
+        2.0 * r_quad * np.log(r)
+        - 7.0 / 2.0 * r_quad
+        + 16.0 / 3.0 * r_cubic
+        - 2.0 * r_sqr
+        + 1.0 / 6.0
+    )
+    return result
+
+
+@nb.njit
+def buhmann_C3(r):
+    r_sqr = r * r
+    r_quad = r_sqr * r_sqr
+    r_pow35 = r ** 3.5
+    result = (
+        112.0 / 45.0 * r_pow35 * r
+        + 16.0 / 3.0 * r_pow35
+        - 7.0 * r_quad
+        - 14.0 / 15.0 * r_sqr
+        + 1.0 / 9.0
+    )
+    return result
 
 
 def generate_kernel(kernel_func):

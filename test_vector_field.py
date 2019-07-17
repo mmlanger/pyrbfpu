@@ -4,7 +4,7 @@ import numba as nb
 from pyrbfpu.common import *
 
 
-x, y = np.mgrid[0:1:100j, 0:1:100j]
+x, y = np.mgrid[0:1:100j, 0:2:100j]
 x = x.flatten()
 y = y.flatten()
 
@@ -23,7 +23,7 @@ def test_func(x, y):
 vals = test_func(x, y)
 vals = np.array(vals).T
 
-pu = RatRBFPartUnityInterpolation(points, vals, 60)
+pu = RBFUnityPartitionInterpolation(points, vals, 100, box_overlap=0.01)
 
 test_points = [
     points[211],

@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import minimize_scalar
+from scipy.linalg import svd
 
 import numba as nb
 
@@ -7,12 +8,12 @@ from pyrbfpu import util
 
 
 @nb.njit
-def rat_interp_eval_vector(kernel, points, alpha, beta, x, param):
+def rational_vector_eval(kernel, points, alpha, beta, x, param):
     dim = alpha.shape[1]
     num = np.zeros(dim)
     denom = np.zeros(dim)
 
-    for i in range(points.shape[0]):
+    for i in range(alpha.shape[0]):
         phi = kernel(x, points[i], param)
         for k in range(dim):
             num[k] += alpha[i, k] * phi
@@ -22,10 +23,10 @@ def rat_interp_eval_vector(kernel, points, alpha, beta, x, param):
 
 
 @nb.njit
-def rat_interp_eval_scalar(kernel, points, alpha, beta, x, param):
+def rational_scalar_eval(kernel, points, alpha, beta, x, param):
     num = 0.0
     denom = 0.0
-    for i in range(points.shape[0]):
+    for i in range(alpha.shape[0]):
         phi = kernel(x, points[i], param)
         num += alpha[i] * phi
         denom += beta[i] * phi
@@ -34,11 +35,31 @@ def rat_interp_eval_scalar(kernel, points, alpha, beta, x, param):
 
 
 @nb.njit
-def lin_interp_eval_vector(kernel, points, coeffs, dummy, x, param):
+def rational_aug_scalar_eval(kernel, points, alpha, beta, x, param):
+    n_aug = alpha.shape[0]
+    n = beta.shape[0]
+    num = 0.0
+    denom = 0.0
+
+    for i in range(n):
+        phi = kernel(x, points[i], param)
+        num += alpha[i] * phi
+        denom += beta[i] * phi
+
+    num += alpha[n]
+
+    for i in range(n + 1, n_aug):
+        num += alpha[i] * x[i - 1 - n]
+
+    return num / denom
+
+
+@nb.njit
+def linear_vector_eval(kernel, points, coeffs, dummy, x, param):
     dim = coeffs.shape[1]
     result = np.zeros(dim)
 
-    for i in range(points.shape[0]):
+    for i in range(coeffs.shape[0]):
         phi = kernel(x, points[i], param)
         for k in range(dim):
             result[k] += coeffs[i, k] * phi
@@ -47,10 +68,26 @@ def lin_interp_eval_vector(kernel, points, coeffs, dummy, x, param):
 
 
 @nb.njit
-def lin_interp_eval_scalar(kernel, points, coeffs, dummy, x, param):
+def linear_scalar_eval(kernel, points, coeffs, dummy, x, param):
     result = 0.0
-    for i in range(points.shape[0]):
+    for i in range(coeffs.shape[0]):
         result += coeffs[i] * kernel(x, points[i], param)
+
+    return result
+
+
+@nb.njit
+def linear_aug_scalar_eval(kernel, points, coeffs, dummy, x, param):
+    n = points.shape[0]
+    n_aug = coeffs.shape[0]
+    result = 0.0
+    for i in range(n):
+        result += coeffs[i] * kernel(x, points[i], param)
+
+    result += coeffs[n]
+
+    for i in range(n + 1, n_aug):
+        result += coeffs[i] * points[i, i - 1 - n]
 
     return result
 
@@ -77,7 +114,7 @@ class RBFInterpolation:
 
         self.eval_func = None
 
-    def compute(self, rational=True):
+    def compute(self, rational=False):
         if rational:
             if len(self.values.shape) > 1:
                 self.alpha = np.zeros(self.values.shape)
@@ -88,10 +125,12 @@ class RBFInterpolation:
                     self.alpha[:, k] = alpha
                     self.beta[:, k] = beta
 
-                self.eval_func = rat_interp_eval_vector
+                self.eval_func = rational_vector_eval
             else:
                 self.alpha, self.beta = self.compute_rational(self.values)
-                self.eval_func = rat_interp_eval_scalar
+                self.eval_func = rational_scalar_eval
+                # self.alpha, self.beta = self.compute_augmented_rational(self.values)
+                # self.eval_func = rational_aug_scalar_eval
         else:
             if len(self.values.shape) > 1:
                 self.alpha = np.zeros(self.values.shape)
@@ -99,10 +138,12 @@ class RBFInterpolation:
                 for k in range(self.values.shape[1]):
                     self.alpha[:, k] = self.compute_linear(self.values[:, k])
 
-                self.eval_func = lin_interp_eval_vector
+                self.eval_func = linear_vector_eval
             else:
-                self.alpha = self.compute_linear(self.values)
-                self.eval_func = lin_interp_eval_scalar
+                # self.alpha = self.compute_linear(self.values)
+                # self.eval_func = linear_scalar_eval
+                self.alpha = self.compute_augmented_linear(self.values)
+                self.eval_func = linear_aug_scalar_eval
 
     def compute_rational(self, f):
         if np.allclose(f, 0.0, rtol=0.0, atol=self.tol):
@@ -111,7 +152,7 @@ class RBFInterpolation:
         B = util.kernel_matrix(self.kernel, self.points, self.param)
 
         H, P = util.lanczos_decomposition(B, f, self.tol)
-        U, s, Vh = np.linalg.svd(H, full_matrices=False)
+        U, s, Vh = svd(H, full_matrices=False)
 
         c = P @ (Vh[0] / s[0])
 
@@ -120,11 +161,39 @@ class RBFInterpolation:
 
         return alpha, beta
 
+    def compute_augmented_rational(self, f):
+        B = util.augmented_kernel_matrix(self.kernel, self.points, self.param)
+        n = f.shape[0]
+        n_aug = B.shape[0]
+        f_aug = np.hstack((f, np.zeros(n_aug - n)))
+
+        H, P = util.lanczos_decomposition(B, f_aug, self.tol)
+        U, s, Vh = svd(H, full_matrices=False)
+
+        c = P @ (Vh[0] / s[0])
+
+        alpha = P @ Vh.T @ ((U.T @ P.T @ (f_aug * c)) / s)
+        beta = c[:n] / s[0]
+
+        return alpha, beta
+
     def compute_linear(self, f):
         B = util.kernel_matrix(self.kernel, self.points, self.param)
-        B -= 1e-4 * np.eye(f.shape[0])
+        # B -= 1e-3 * np.eye(f.shape[0])
 
         H, P = util.lanczos_decomposition(B, f, self.tol)
+        Hinv = util.invert_symm_tridiag(H)
+        coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
+
+        return coeffs
+
+    def compute_augmented_linear(self, f):
+        B = util.augmented_kernel_matrix(self.kernel, self.points, self.param)
+        n = f.shape[0]
+        n_aug = B.shape[0]
+        f_aug = np.hstack((f, np.zeros(n_aug - n)))
+
+        H, P = util.lanczos_decomposition(B, f_aug, self.tol)
         Hinv = util.invert_symm_tridiag(H)
         coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
 
@@ -176,11 +245,11 @@ class RBFInterpolation:
         #     tol=1e-3,
         # )
         # self.param = res.x
-        print(
-            "after  {} with param={}".format(
-                self.estimate_error(self.param), self.param
-            )
-        )
+        # print(
+        #     "after  {} with param={}".format(
+        #         self.estimate_error(self.param), self.param
+        #     )
+        # )
 
     def estimate_error(self, param):
         f = self.optimize_values
@@ -190,6 +259,8 @@ class RBFInterpolation:
         Hinv = util.invert_symm_tridiag(H)
         Binv = P @ Hinv @ P.T
         scaled_coeffs = P @ Hinv[0, :]
+
+        # efficient check of condition number? tridiagonal algorithm?
 
         # print("reduction from {} to {}".format(f.shape[0], H.shape[0]))
         # if hasattr(self, "counter"):

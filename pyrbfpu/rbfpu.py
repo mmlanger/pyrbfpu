@@ -16,16 +16,17 @@ def pyramid(point, center, box_length):
     return max(1.0 - 2.0 * diffs.max(), 0.0)
 
 
-class RatRBFPartUnityInterpolation:
+class RBFUnityPartitionInterpolation:
     def __init__(
         self,
         points,
         values,
         min_cardinality=100,
         max_cardinality=None,
-        weight_overlap=0.01,
+        box_overlap=0.01,
+        ball_overlap=0.05,
         init_delta=None,
-        rbf="imq",
+        rbf="inverse_multiquadric",
         tol=1e-14,
     ):
         if len(points.shape) == 1:
@@ -55,7 +56,13 @@ class RatRBFPartUnityInterpolation:
         else:
             self.delta = init_delta
 
-        self.box_length = 0.95 * 2 * np.sqrt(self.delta ** 2 / self.point_dim)
+        self.tol = tol
+        self.ball_overlap = ball_overlap
+        self.box_overlap = box_overlap
+        self.max_level = 1 + int(self.box_overlap // 1.0)
+        contained_box_length = 2 * self.delta / np.sqrt(self.point_dim)
+        self.box_support_length = contained_box_length / (1.0 + self.ball_overlap)
+        self.box_length = self.box_support_length / (1.0 + 2.0 * self.box_overlap)
 
         if isinstance(rbf, str):
             if hasattr(kernels, rbf):
@@ -67,12 +74,9 @@ class RatRBFPartUnityInterpolation:
 
         self.kernel = kernels.generate_kernel(self.kernel_func)
 
-        self.tol = tol
-        self.weight_overlap = weight_overlap
-
         self.neighbors = boxpart.BoxNeighbors(self.point_dim)
-
         self.boxpartition = boxpart.parallel_boxpartition(self.points, self.box_length)
+
         self.subdomains = {}
         self.box_overlaps = {}
 
@@ -131,12 +135,12 @@ class RatRBFPartUnityInterpolation:
                 local_points, local_values, self.kernel, param, self.tol
             )
         else:
-            interpolator = RatRBFPartUnityInterpolation(
+            interpolator = RBFUnityPartitionInterpolation(
                 local_points,
                 local_values,
                 min_cardinality=self.min_cardinality,
                 max_cardinality=self.max_cardinality,
-                weight_overlap=self.weight_overlap,
+                box_overlap=self.box_overlap,
                 rbf=self.kernel_func,
                 tol=self.tol,
             )
@@ -157,7 +161,7 @@ class RatRBFPartUnityInterpolation:
             overlaps = self.box_overlaps[box_idx]
         except KeyError:
             overlaps = []
-            for level in range(2):
+            for level in range(self.max_level + 1):
                 for idx_key in self.neighbors.neighbor_indices(box_idx, level):
                     if level > 0 and idx_key not in self.boxpartition:
                         continue
@@ -170,14 +174,13 @@ class RatRBFPartUnityInterpolation:
 
             self.box_overlaps[box_idx] = overlaps
 
-        effective_box_length = self.box_length * (1.0 + self.weight_overlap)
         weight_sum = 0.0
         f = 0.0
 
         for (center, interpolator) in overlaps:
-            weight = pyramid(point, center, effective_box_length)
+            weight = pyramid(point, center, self.box_support_length)
             # print(weight)
-            weight = weight ** 2
+            # weight = weight ** 2
             if weight > 0.0:
                 weight_sum += weight
 
