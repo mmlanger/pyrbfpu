@@ -39,12 +39,9 @@ def lin_interp_eval_vector(kernel, points, coeffs, dummy, x, param):
     result = np.zeros(dim)
 
     for i in range(points.shape[0]):
-        result += coeffs[i] * kernel(x, points[i], param)
-
-    for i in range(points.shape[0]):
         phi = kernel(x, points[i], param)
         for k in range(dim):
-            result[k] += coeffs[i] * phi
+            result[k] += coeffs[i, k] * phi
 
     return result
 
@@ -80,7 +77,7 @@ class RBFInterpolation:
 
         self.eval_func = None
 
-    def compute(self, rational=False):
+    def compute(self, rational=True):
         if rational:
             if len(self.values.shape) > 1:
                 self.alpha = np.zeros(self.values.shape)
