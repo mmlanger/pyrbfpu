@@ -7,7 +7,7 @@ from pyrbfpu import util
 
 
 @nb.njit
-def interp_eval_vector(kernel, points, alpha, beta, x, param):
+def rat_interp_eval_vector(kernel, points, alpha, beta, x, param):
     dim = alpha.shape[1]
     num = np.zeros(dim)
     denom = np.zeros(dim)
@@ -22,7 +22,7 @@ def interp_eval_vector(kernel, points, alpha, beta, x, param):
 
 
 @nb.njit
-def interp_eval_scalar(kernel, points, alpha, beta, x, param):
+def rat_interp_eval_scalar(kernel, points, alpha, beta, x, param):
     num = 0.0
     denom = 0.0
     for i in range(points.shape[0]):
@@ -31,6 +31,31 @@ def interp_eval_scalar(kernel, points, alpha, beta, x, param):
         denom += beta[i] * phi
 
     return num / denom
+
+
+@nb.njit
+def lin_interp_eval_vector(kernel, points, coeffs, dummy, x, param):
+    dim = coeffs.shape[1]
+    result = np.zeros(dim)
+
+    for i in range(points.shape[0]):
+        result += coeffs[i] * kernel(x, points[i], param)
+
+    for i in range(points.shape[0]):
+        phi = kernel(x, points[i], param)
+        for k in range(dim):
+            result[k] += coeffs[i] * phi
+
+    return result
+
+
+@nb.njit
+def lin_interp_eval_scalar(kernel, points, coeffs, dummy, x, param):
+    result = 0.0
+    for i in range(points.shape[0]):
+        result += coeffs[i] * kernel(x, points[i], param)
+
+    return result
 
 
 class RBFInterpolation:
@@ -55,21 +80,32 @@ class RBFInterpolation:
 
         self.eval_func = None
 
-    def compute(self):
-        if len(self.values.shape) > 1:
-            self.eval_func = interp_eval_vector
+    def compute(self, rational=False):
+        if rational:
+            if len(self.values.shape) > 1:
+                self.alpha = np.zeros(self.values.shape)
+                self.beta = np.zeros(self.values.shape)
 
-            self.alpha = np.zeros(self.values.shape)
-            self.beta = np.zeros(self.values.shape)
+                for k in range(self.values.shape[1]):
+                    alpha, beta = self.compute_rational(self.values[:, k])
+                    self.alpha[:, k] = alpha
+                    self.beta[:, k] = beta
 
-            for k in range(self.values.shape[1]):
-                alpha, beta = self.compute_rational(self.values[:, k])
-                self.alpha[:, k] = alpha
-                self.beta[:, k] = beta
-
+                self.eval_func = rat_interp_eval_vector
+            else:
+                self.alpha, self.beta = self.compute_rational(self.values)
+                self.eval_func = rat_interp_eval_scalar
         else:
-            self.eval_func = interp_eval_scalar
-            self.alpha, self.beta = self.compute_rational(self.values)
+            if len(self.values.shape) > 1:
+                self.alpha = np.zeros(self.values.shape)
+
+                for k in range(self.values.shape[1]):
+                    self.alpha[:, k] = self.compute_linear(self.values[:, k])
+
+                self.eval_func = lin_interp_eval_vector
+            else:
+                self.alpha = self.compute_rational(self.values)
+                self.eval_func = lin_interp_eval_scalar
 
     def compute_rational(self, f):
         if np.allclose(f, 0.0, rtol=0.0, atol=self.tol):
@@ -89,34 +125,52 @@ class RBFInterpolation:
 
     def compute_linear(self, f):
         B = util.kernel_matrix(self.kernel, self.points, self.param)
-        #B -= 1e-10 * np.eye(f.shape[0])
+        B -= 1e-4 * np.eye(f.shape[0])
 
         H, P = util.lanczos_decomposition(B, f, self.tol)
         Hinv = util.invert_symm_tridiag(H)
-        alpha = (P @ Hinv[0, :]) * np.linalg.norm(f)
+        coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
 
-        @nb.njit
-        def interp_eval(kernel, points, coeffs, dummy, x, param):
-            result = 0.0
-            for i in range(points.shape[0]):
-                result += coeffs[i] * kernel(x, points[i], param)
-
-            return result
-
-        self.eval_func = interp_eval
-        return alpha, alpha
+        return coeffs
 
     def optimize_param(self):
-        print(
-            "before {} with param={}".format(
-                self.estimate_error(self.param), self.param
-            )
-        )
-        candidates = [0.1, 0.2, 0.5, 0.75, 1.0, 1.5, 5.0, 10.0]
+        # print(
+        #     "before {} with param={}".format(
+        #         self.estimate_error(self.param), self.param
+        #     )
+        # )
+        candidates = [0.0001, 0.001, 0.01, 0.1, 0.2, 0.5, 0.75, 1.0, 1.5, 5.0, 10.0]
         if self.param not in candidates:
             candidates.append(self.param)
-        errors = [(eps, self.estimate_error(eps)) for eps in candidates]
-        self.param, err = min(errors, key=lambda x: x[1])
+
+        while candidates:
+            best_param = candidates.pop(0)
+            try:
+                param_err = self.estimate_error(best_param)
+            except ZeroDivisionError:
+                continue
+            break
+
+        for param in candidates:
+            try:
+                new_param_err = self.estimate_error(param)
+            except ZeroDivisionError:
+                continue
+
+            if new_param_err < param_err:
+                best_param = param
+                param_err = new_param_err
+
+        self.param = best_param
+
+        # res = minimize_scalar(
+        #     self.estimate_error,
+        #     bracket=(0.5 * best_param, best_param),
+        #     method="brent",
+        #     tol=1e-6,
+        # )
+        # self.param = res.x
+
         # res = minimize_scalar(
         #     self.estimate_error,
         #     bracket=(1e-6, 5.0),
