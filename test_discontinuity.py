@@ -9,7 +9,7 @@ points = np.linspace(-1, 1, 200)
 
 def test_func(x):
     if x < 0.0:
-        return -1.0  # + np.random.normal(-1.0, 0.01)
+        return -1.0  #+ np.random.normal(-1.0, 0.01)
     else:
         return 1.0 + x**2
 

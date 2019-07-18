@@ -3,7 +3,7 @@ from pyrbfpu.rbfpu import RBFUnityPartitionInterpolation
 
 
 np.random.seed(12351)
-points = np.random.normal(0, 3, (4000, 2))
+points = np.random.normal(0, 3, (1000, 2))
 #points = np.random.uniform(-7, 7, (4000, 2))
 
 # x, y = np.mgrid[-7:7:50j, -7:7:50j]
