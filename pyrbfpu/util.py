@@ -173,8 +173,9 @@ def kernel_matrix(kernel, points, param):
 def augmented_kernel_matrix(kernel, points, param):
     dim = points.shape[1]
     n = points.shape[0]
+    n_aug = n + dim + 1
 
-    A = np.zeros((n + 1 + dim, n + 1 + dim), dtype=np.float64)
+    A = np.zeros((n_aug, n_aug), dtype=np.float64)
     for i in range(n):
         point = points[i]
         A[i, i] = kernel(point, point, param)
@@ -185,14 +186,14 @@ def augmented_kernel_matrix(kernel, points, param):
                 A[i, j] = val
                 A[j, i] = val
 
-    for j in range(i + 1, n):
+    for j in range(0, n):
         A[n, j] = 1.0
         A[j, n] = 1.0
 
-    for i in range(n + 1, n + 1 + dim):
+    for i in range(n + 1, n_aug):
         dim_idx = i - 1 - n
-        for j in range(i + 1, n):
-            val = points[i, dim_idx]
+        for j in range(0, n):
+            val = points[j, dim_idx]
             A[i, j] = val
             A[j, i] = val
 

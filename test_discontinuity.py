@@ -9,14 +9,16 @@ points = np.linspace(-1, 1, 200)
 
 def test_func(x):
     if x < 0.0:
-        return -1.0 #+ np.random.normal(-1.0, 0.01)
+        return -1.0  # + np.random.normal(-1.0, 0.01)
     else:
-        return 1.0
+        return 1.0 + x**2
+
+
 
 
 vals = np.array([test_func(x) for x in points])
 
-pu = RBFUnityPartitionInterpolation(points, vals, 100, tol=1e-14, rbf='cubic')
+pu = RBFUnityPartitionInterpolation(points, vals, 100, tol=1e-14, rbf="inverse_multiquadric")
 sample_space = np.linspace(-1, 1, 1000)
 interp_vals = np.array([pu(np.array([x])) for x in sample_space])
 
