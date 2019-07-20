@@ -1,10 +1,11 @@
 """
 Open questions:
-- polynomial augmentation for rational and/or linear ansatz?
+- polynomial augmentation for rational and/or linear ansatz? (rational has issues with constant functions!)
 - polynomial augmentation useful/necessary?
 - efficient svd algorithm for tridiagonal matrices?
 - efficient eigenvalue/eigenvector calculation for tridiagonal matrices?
 - efficient estimation of the condition number? (tridiagonal matrix version?)
+- noise free error estimate? different error estimate? (needs to be fast)
 
 """
 
@@ -15,6 +16,7 @@ from scipy.linalg import svd
 import numba as nb
 
 from pyrbfpu import util
+from pyrbfpu.linalg import lanczos_decomposition, invert_symm_tridiag
 
 
 @nb.njit
@@ -148,29 +150,32 @@ class RBFInterpolation:
             if len(self.values.shape) > 1:
                 self.alpha = np.zeros(self.values.shape)
 
-                for k in range(self.values.shape[1]):
-                    self.alpha[:, k] = self.compute_linear(self.values[:, k])
-
-                self.eval_func = linear_vector_eval
                 # for k in range(self.values.shape[1]):
-                #     self.alpha[:, k] = self.compute_augmented_linear(self.values[:, k])
+                #     self.alpha[:, k] = self.compute_linear(self.values[:, k])
 
-                # self.eval_func = linear_aug_vector_eval
+                # self.eval_func = linear_vector_eval
+                for k in range(self.values.shape[1]):
+                    self.alpha[:, k] = self.compute_augmented_linear(self.values[:, k])
+
+                self.eval_func = linear_aug_vector_eval
 
             else:
-                self.alpha = self.compute_linear(self.values)
-                self.eval_func = linear_scalar_eval
-                # self.alpha = self.compute_augmented_linear(self.values)
-                # self.eval_func = linear_aug_scalar_eval
+                # self.alpha = self.compute_linear(self.values)
+                # self.eval_func = linear_scalar_eval
+                self.alpha = self.compute_augmented_linear(self.values)
+                self.eval_func = linear_aug_scalar_eval
 
     def compute_rational(self, f):
-        if np.allclose(f, 0.0, rtol=0.0, atol=self.tol):
-            return np.zeros(f.shape[0]), np.ones(f.shape[0])
+        if f.max() - f.min() < self.tol:
+            return np.full(f.shape[0], np.mean(f)), np.ones(f.shape[0])
 
         B = util.kernel_matrix(self.kernel, self.points, self.param)
 
-        H, P = util.lanczos_decomposition(B, f, self.tol)
+        H, P = lanczos_decomposition(B, f, self.tol)
         U, s, Vh = svd(H, full_matrices=False)
+
+        # delta = 1e-0
+        # s = (s**2 + delta**2) / s
 
         c = P @ (Vh[0] / s[0])
 
@@ -181,10 +186,9 @@ class RBFInterpolation:
 
     def compute_linear(self, f):
         B = util.kernel_matrix(self.kernel, self.points, self.param)
-        # B -= 1e-3 * np.eye(f.shape[0])
 
-        H, P = util.lanczos_decomposition(B, f, self.tol)
-        Hinv = util.invert_symm_tridiag(H)
+        H, P = lanczos_decomposition(B, f, self.tol)
+        Hinv = invert_symm_tridiag(H)
         coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
 
         return coeffs
@@ -222,15 +226,15 @@ class RBFInterpolation:
                 self.param = param
                 param_err = new_param_err
 
-        # self.param = 0.5
+        #self.param = 0.01
 
-        # res = minimize_scalar(
-        #     self.estimate_error,
-        #     bracket=(0.5 * best_param, best_param),
-        #     method="brent",
-        #     tol=1e-6,
-        # )
-        # self.param = res.x
+        res = minimize_scalar(
+            self.estimate_error,
+            bracket=(0.5 * self.param, self.param),
+            method="brent",
+            tol=1e-6,
+        )
+        self.param = res.x
 
         # res = minimize_scalar(
         #     self.estimate_error,
@@ -249,12 +253,11 @@ class RBFInterpolation:
     def estimate_error(self, param):
         f = self.optimize_values
         B = util.kernel_matrix(self.kernel, self.points, param)
-        B -= 5e-13 * np.eye(f.shape[0])
 
-        H, P = util.lanczos_decomposition(B, f, self.tol)
-        Hinv = util.invert_symm_tridiag(H)
+        H, P = lanczos_decomposition(B, f, self.tol)
+        Hinv = invert_symm_tridiag(H)
         Binv = P @ Hinv @ P.T
-        scaled_coeffs = P @ Hinv[0, :]
+        coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
 
         # print("reduction from {} to {}".format(f.shape[0], H.shape[0]))
         # if hasattr(self, "counter"):
@@ -262,7 +265,7 @@ class RBFInterpolation:
         # else:
         #     self.counter = 1
 
-        return util.accumulate_error(scaled_coeffs, Binv)
+        return util.loocv_error(coeffs, Binv)
 
     @property
     def computed(self):

@@ -7,7 +7,7 @@ from pyrbfpu.common import *
 
 
 np.random.seed(12351)
-points = np.random.uniform(2, 3, (300, 2))
+points = np.random.uniform(0, 3, (200, 2))
 
 
 def test_func(point):
