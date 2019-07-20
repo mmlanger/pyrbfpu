@@ -201,16 +201,16 @@ class RBFInterpolationRational(RBFInterpolationBase):
             self.beta = np.zeros(self.values.shape)
 
             for k in range(self.values.shape[1]):
-                alpha, beta = self.compute_rational(self.values[:, k])
+                alpha, beta = self.compute_coeffs(self.values[:, k])
                 self.alpha[:, k] = alpha
                 self.beta[:, k] = beta
 
             self.eval_func = rational_vector_eval
         else:
-            self.alpha, self.beta = self.compute_rational(self.values)
+            self.alpha, self.beta = self.compute_coeffs(self.values)
             self.eval_func = rational_scalar_eval
 
-    def compute_rational(self, f):
+    def compute_coeffs(self, f):
         if f.max() - f.min() < self.tol:
             return np.full(f.shape[0], np.mean(f)), np.ones(f.shape[0])
 
@@ -226,6 +226,56 @@ class RBFInterpolationRational(RBFInterpolationBase):
 
         alpha = P @ Vh.T @ ((U.T @ P.T @ (f * c)) / s)
         beta = c / s[0]
+
+        return alpha, beta
+
+    def estimate_error(self, param):
+        # TODO: rational version
+        f = self.optimize_values
+        B = util.kernel_matrix(self.kernel, self.points, param)
+
+        H, P = lanczos_decomposition(B, f, self.tol)
+        Hinv = invert_symm_tridiag(H)
+        Binv = P @ Hinv @ P.T
+        coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
+
+        return util.loocv_error(coeffs, Binv)
+
+    def __call__(self, x):
+        return self.eval_func(
+            self.kernel, self.points, self.alpha, self.beta, x, self.param
+        )
+
+
+
+class RBFInterpolationRescaledLocalized(RBFInterpolationBase):
+    def __init__(self, points, values, kernel, init_param, tol=1e-14):
+        super().__init__(points, values, kernel, init_param)
+        self.tol = tol
+
+        self.alpha = None
+        self.beta = None
+
+    def compute(self):
+        if len(self.values.shape) > 1:
+            self.alpha = np.zeros(self.values.shape)
+            self.beta = np.zeros(self.values.shape)
+
+            for k in range(self.values.shape[1]):
+                alpha, beta = self.compute_coeffs(self.values[:, k])
+                self.alpha[:, k] = alpha
+                self.beta[:, k] = beta
+
+            self.eval_func = rational_vector_eval
+        else:
+            self.alpha, self.beta = self.compute_coeffs(self.values)
+            self.eval_func = rational_scalar_eval
+
+    def compute_coeffs(self, f):
+        B = util.kernel_matrix(self.kernel, self.points, self.param)
+
+        alpha = np.linalg.solve(B, f)
+        beta = np.linalg.solve(B, np.ones(f.shape))
 
         return alpha, beta
 
@@ -264,7 +314,7 @@ class RBFInterpolationLinear(RBFInterpolationBase):
             self.eval_func = linear_vector_eval
 
         else:
-            self.alpha = self.compute_coeffs(self.values)
+            self.coeffs = self.compute_coeffs(self.values)
             self.eval_func = linear_scalar_eval
 
     def compute_coeffs(self, f):
@@ -292,7 +342,7 @@ class RBFInterpolationLinear(RBFInterpolationBase):
 
 
 class RBFInterpolationAugmentedLinear(RBFInterpolationBase):
-    def __init__(self, points, values, kernel, init_param):
+    def __init__(self, points, values, kernel, init_param, **kwargs):
         super().__init__(points, values, kernel, init_param)
 
         self.alpha = None

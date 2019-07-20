@@ -11,16 +11,16 @@ def test_func(x):
     if x < 0.0:
         return -1.0 + np.random.normal(-1.0, 0.005)
     else:
-        return 1.0 + x
+        return 1.0 #+ x
 
 
 vals = np.array([test_func(x) for x in points])
 
 pu = RBFUnityPartitionInterpolation(
-    points, vals, 100, tol=1e-12, rbf="quintic", box_overlap=0.01
+    points, vals, 100, tol=1e-12, rbf="inverse_multiquadric", box_overlap=0.01
 )
 sample_space = np.linspace(-1, 1, 1000)
-interp_vals = np.array([pu(np.array([x])) for x in sample_space])
+interp_vals = np.array([pu(x) for x in sample_space])
 
 fig = plt.figure()
 axes = fig.add_subplot(111)

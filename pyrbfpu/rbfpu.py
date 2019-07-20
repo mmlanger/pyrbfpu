@@ -153,9 +153,9 @@ class RBFUnityPartitionInterpolation:
         # for lazy evaluation only the box partition is necessary
         return True
 
-    def __call__(self, point):
-        point = np.asarray(point)
-        box_idx = tuple(boxpart.boxindex(point, self.box_length))
+    def __call__(self, x):
+        point = np.atleast_1d(x)
+        box_idx = boxpart.boxindex(point, self.box_length)
 
         try:
             overlaps = self.box_overlaps[box_idx]
