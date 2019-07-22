@@ -54,6 +54,28 @@ def bounding_box(points):
     return box
 
 
+@nb.njit
+def apply_scaling(point, shifts, scales):
+    point_dim = point.shape[0]
+    rescaled_point = np.zeros(point_dim)
+
+    for k in range(point_dim):
+        rescaled_point[k] = (point[k] + shifts[k]) / scales[k]
+
+    return rescaled_point
+
+
+@nb.njit
+def reverse_scaling(point, shifts, scales):
+    point_dim = point.shape[0]
+    rescaled_point = np.zeros(point_dim)
+
+    for k in range(point_dim):
+        rescaled_point[k] = point[k] * scales[k] - shifts[k]
+
+    return rescaled_point
+
+
 def box_volume(box):
     vol = 1.0
     for k in range(box.shape[1]):
@@ -84,29 +106,6 @@ def kernel_matrix(kernel, points, param):
             if val != 0.0:
                 A[i, j] = val
                 A[j, i] = val
-
-    return A
-
-
-@nb.njit
-def augmented_kernel_matrix2(kernel, points, param):
-    n = points.shape[0]
-    n_aug = n + 1
-
-    A = np.zeros((n_aug, n_aug), dtype=np.float64)
-    for i in range(n):
-        point = points[i]
-        A[i, i] = kernel(point, point, param)
-
-        for j in range(i + 1, n):
-            val = kernel(point, points[j], param)
-            if val != 0.0:
-                A[i, j] = val
-                A[j, i] = val
-
-    for j in range(0, n):
-        A[n, j] = 1.0
-        A[j, n] = 1.0
 
     return A
 

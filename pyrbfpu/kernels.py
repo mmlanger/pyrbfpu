@@ -105,6 +105,9 @@ def wendland_C6(r):
 
 @nb.njit
 def buhmann_C2(r):
+    if r > 1.0:
+        return 0.0
+
     r_sqr = r * r
     r_cubic = r_sqr * r
     r_quad = r_sqr * r_sqr
@@ -120,6 +123,9 @@ def buhmann_C2(r):
 
 @nb.njit
 def buhmann_C3(r):
+    if r > 1.0:
+        return 0.0
+
     r_sqr = r * r
     r_quad = r_sqr * r_sqr
     r_pow35 = r ** 3.5

@@ -151,7 +151,7 @@ class RBFInterpolationBase:
                 self.param = param
                 param_err = new_param_err
 
-        # self.param = 0.01
+        # self.param = 10.1
 
         res = minimize_scalar(
             self.estimate_error,
@@ -212,7 +212,7 @@ class RBFInterpolationRational(RBFInterpolationBase):
 
     def compute_coeffs(self, f):
         if f.max() - f.min() < self.tol:
-            return np.full(f.shape[0], np.mean(f)), np.ones(f.shape[0])
+            return np.full(f.shape[0], f.mean()), np.ones(f.shape[0])
 
         B = util.kernel_matrix(self.kernel, self.points, self.param)
 
@@ -229,55 +229,31 @@ class RBFInterpolationRational(RBFInterpolationBase):
 
         return alpha, beta
 
-    def estimate_error(self, param):
-        # TODO: rational version
+    def estimate_error2(self, param):
         f = self.optimize_values
+        if f.max() - f.min() < self.tol:
+            return np.full(f.shape[0], f.mean()), np.ones(f.shape[0])
+
         B = util.kernel_matrix(self.kernel, self.points, param)
 
         H, P = lanczos_decomposition(B, f, self.tol)
-        Hinv = invert_symm_tridiag(H)
-        Binv = P @ Hinv @ P.T
-        coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
+        U, s, Vh = svd(H, full_matrices=False)
 
-        return util.loocv_error(coeffs, Binv)
+        if self.smooth is not None:
+            s = (s ** 2 + self.smooth ** 2) / s
 
-    def __call__(self, x):
-        return self.eval_func(
-            self.kernel, self.points, self.alpha, self.beta, x, self.param
-        )
+        c = P @ (Vh[0] / s[0])
 
+        alpha = P @ Vh.T @ ((U.T @ P.T @ (f * c)) / s)
+        beta = c / s[0]
 
+        Binv = P @ Vh.T @ np.diag(1.0 / s) @ U.T @ P.T
+        Binv_diag = np.diagonal(Binv)
+        h = B @ beta
+        error = (alpha - f * beta) / (h * Binv_diag - beta)
 
-class RBFInterpolationRescaledLocalized(RBFInterpolationBase):
-    def __init__(self, points, values, kernel, init_param, tol=1e-14):
-        super().__init__(points, values, kernel, init_param)
-        self.tol = tol
-
-        self.alpha = None
-        self.beta = None
-
-    def compute(self):
-        if len(self.values.shape) > 1:
-            self.alpha = np.zeros(self.values.shape)
-            self.beta = np.zeros(self.values.shape)
-
-            for k in range(self.values.shape[1]):
-                alpha, beta = self.compute_coeffs(self.values[:, k])
-                self.alpha[:, k] = alpha
-                self.beta[:, k] = beta
-
-            self.eval_func = rational_vector_eval
-        else:
-            self.alpha, self.beta = self.compute_coeffs(self.values)
-            self.eval_func = rational_scalar_eval
-
-    def compute_coeffs(self, f):
-        B = util.kernel_matrix(self.kernel, self.points, self.param)
-
-        alpha = np.linalg.solve(B, f)
-        beta = np.linalg.solve(B, np.ones(f.shape))
-
-        return alpha, beta
+        # return abs(error).max()
+        return np.linalg.norm(error)
 
     def estimate_error(self, param):
         # TODO: rational version
@@ -289,7 +265,33 @@ class RBFInterpolationRescaledLocalized(RBFInterpolationBase):
         Binv = P @ Hinv @ P.T
         coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
 
-        return util.loocv_error(coeffs, Binv)
+        return util.loocv_error2(coeffs, Binv)
+
+    def estimate_error_rational(self, param):
+        f = self.optimize_values
+        if f.max() - f.min() < self.tol:
+            return np.full(f.shape[0], f.mean()), np.ones(f.shape[0])
+
+        B = util.kernel_matrix(self.kernel, self.points, param)
+
+        H, P = lanczos_decomposition(B, f, self.tol)
+        U, s, Vh = svd(H, full_matrices=False)
+
+        if self.smooth is not None:
+            s = (s ** 2 + self.smooth ** 2) / s
+
+        c = P @ (Vh[0] / s[0])
+
+        alpha = P @ Vh.T @ ((U.T @ P.T @ (f * c)) / s)
+        beta = c / s[0]
+
+        Binv = P @ Vh.T @ np.diag(1.0 / s) @ U.T @ P.T
+        Binv_diag = np.diagonal(Binv)
+        h = B @ beta
+        error = (alpha - f * beta) / (h * Binv_diag - beta)
+
+        # return abs(error).max()
+        return np.linalg.norm(error)
 
     def __call__(self, x):
         return self.eval_func(
@@ -297,7 +299,7 @@ class RBFInterpolationRescaledLocalized(RBFInterpolationBase):
         )
 
 
-class RBFInterpolationLinear(RBFInterpolationBase):
+class RBFInterpolationFastLinear(RBFInterpolationBase):
     def __init__(self, points, values, kernel, init_param, tol=1e-14):
         super().__init__(points, values, kernel, init_param)
         self.tol = tol
@@ -342,11 +344,13 @@ class RBFInterpolationLinear(RBFInterpolationBase):
 
 
 class RBFInterpolationAugmentedLinear(RBFInterpolationBase):
-    def __init__(self, points, values, kernel, init_param, **kwargs):
+    def __init__(self, points, values, kernel, init_param, smooth=None, **kwargs):
         super().__init__(points, values, kernel, init_param)
 
         self.alpha = None
         self.beta = None
+
+        self.smooth = smooth
 
     def compute(self):
         if len(self.values.shape) > 1:
@@ -361,18 +365,26 @@ class RBFInterpolationAugmentedLinear(RBFInterpolationBase):
             self.coeffs = self.compute_coeffs(self.values)
             self.eval_func = linear_aug_scalar_eval
 
-    def compute_coeffs(self, f):
+    def compute_coeffs(self, f, return_Binv=False):
         B = util.augmented_kernel_matrix(self.kernel, self.points, self.param)
         n = f.shape[0]
         n_aug = B.shape[0]
         f_aug = np.hstack((f, np.zeros(n_aug - n)))
 
-        coeffs = np.linalg.solve(B, f_aug)
+        U, s, Vh = svd(B, full_matrices=False)
 
-        return coeffs
+        # self.smooth = 2e-1
+        if self.smooth is not None:
+            s = (s ** 2 + self.smooth ** 2) / s
+
+        coeffs = Vh.T @ ((U.T @ f_aug) / s)
+
+        if return_Binv:
+            return coeffs, Vh.T @ np.diag(1.0 / s) @ U.T
+        else:
+            return coeffs
 
     def estimate_error(self, param):
-        # TODO: augmented version
         f = self.optimize_values
         B = util.kernel_matrix(self.kernel, self.points, param)
 
@@ -382,6 +394,9 @@ class RBFInterpolationAugmentedLinear(RBFInterpolationBase):
         coeffs = (P @ Hinv[0, :]) * np.linalg.norm(f)
 
         return util.loocv_error(coeffs, Binv)
+
+        # coeffs, Binv = self.compute_coeffs(self.optimize_values, return_Binv=True)
+        # return util.loocv_error(coeffs, Binv)
 
     def __call__(self, x):
         return self.eval_func(self.kernel, self.points, self.coeffs, x, self.param)

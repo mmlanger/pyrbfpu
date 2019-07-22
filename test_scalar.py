@@ -25,7 +25,7 @@ def test_func(point):
 
 vals = np.array([test_func(x) for x in points])
 
-pu = RBFUnityPartitionInterpolation(points, vals, 100, tol=1e-14)
+pu = RBFUnityPartitionInterpolation(points, vals, 100, tol=1e-14, rescale=False)
 
 for point in [points[211], points[523]]:
     error = pu(point) - test_func(point)

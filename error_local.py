@@ -19,26 +19,32 @@ def test_func(point):
 kernel = generate_kernel(inverse_multiquadric)
 vals = np.array([test_func(x) for x in points])
 
-rbf = RBFInterpolation(points, vals, kernel, 1.0, 1e-12)
-rbf.estimate_error(0.1)
-
-start = time.perf_counter()
-rbf.optimize_param()
-end = time.perf_counter()
-print("TIME {}".format(end - start))
-# print("TIME {} with EVALS {}".format(end - start, rbf.counter))
-
-# start = time.perf_counter()
-# for i in range(50):
-#     rbf.estimate_error(0.1)
-# end = time.perf_counter()
-# print("TIME ", end - start)
-
-eps_space = np.linspace(0.01, 3.5, 200)
-errors = np.array([rbf.estimate_error(eps) for eps in eps_space])
+targets = [RBFInterpolationRational, RBFInterpolationFastLinear]
 
 fig = plt.figure()
-axes = fig.add_subplot(111)
-axes.axvline(rbf.param)
-axes.plot(eps_space, errors, "+")
+
+for RBFInterpolation in targets:
+    rbf = RBFInterpolation(points, vals, kernel, 1.0, tol=1e-12)
+    rbf.estimate_error(0.1)
+
+    start = time.perf_counter()
+    rbf.optimize_param()
+    end = time.perf_counter()
+    print("TIME {}".format(end - start))
+    # print("TIME {} with EVALS {}".format(end - start, rbf.counter))
+
+    # start = time.perf_counter()
+    # for i in range(50):
+    #     rbf.estimate_error(0.1)
+    # end = time.perf_counter()
+    # print("TIME ", end - start)
+
+    eps_space = np.linspace(0.01, 3.5, 200)
+    errors = np.array([rbf.estimate_error(eps) for eps in eps_space])
+
+    axes = fig.add_subplot(111)
+    axes.axvline(rbf.param)
+    axes.plot(eps_space, errors, "+", label=repr(RBFInterpolation))
+
+plt.legend()
 plt.show()

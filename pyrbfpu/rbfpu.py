@@ -28,11 +28,21 @@ class RBFUnityPartitionInterpolation:
         init_delta=None,
         rbf="inverse_multiquadric",
         tol=1e-14,
+        rescale=False,
     ):
         if len(points.shape) == 1:
             self.points = points.reshape((values.shape[0], 1))
         else:
             self.points = points
+
+        self.rescale = rescale
+        if rescale:
+            bounding_box = util.bounding_box(self.points)
+            self.shifts = -bounding_box.min(axis=0)
+            self.scales = bounding_box.max(axis=0) + self.shifts
+            self.points = np.array(
+                [util.apply_scaling(p, self.shifts, self.scales) for p in self.points]
+            )
 
         self.point_dim = self.points.shape[1]
         self.values = values
@@ -132,7 +142,7 @@ class RBFUnityPartitionInterpolation:
 
         if cardinality <= self.max_cardinality:
             interpolator = RBFInterpolation(
-                local_points, local_values, self.kernel, param, self.tol
+                local_points, local_values, self.kernel, param, tol=self.tol
             )
         else:
             interpolator = RBFUnityPartitionInterpolation(
@@ -155,6 +165,10 @@ class RBFUnityPartitionInterpolation:
 
     def __call__(self, x):
         point = np.atleast_1d(x)
+
+        if self.rescale:
+            point = util.apply_scaling(point, self.shifts, self.scales)
+
         box_idx = boxpart.boxindex(point, self.box_length)
 
         try:
